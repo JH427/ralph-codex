@@ -19,6 +19,7 @@ TEST_COMMAND = [sys.executable, "-m", "pytest"]
 def git(cmd):
     return subprocess.run(
         ["git"] + cmd,
+        cwd=ROOT,
         capture_output=True,
         text=True
     )
@@ -37,10 +38,11 @@ def checkout_branch(branch):
 
 def rollback():
     git(["reset", "--hard", "HEAD"])
+    git(["clean", "-fd"])
 
 def commit_story(story):
     git(["add", "."])
-    git(["commit", "-m", f"{story['id']}: {story['title']}"])
+    return git(["commit", "-m", f"{story['id']}: {story['title']}"]).returncode == 0
 
 # ---------------- Safety: append-only learnings ---------------- #
 
@@ -49,13 +51,17 @@ def hash_file(path):
         return ""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def validate_append_only(before_hash):
+def validate_append_only(before_hash, before_text, before_exists):
+    after_exists = LEARNINGS_FILE.exists()
+    if before_exists and not after_exists:
+        print("❌ learnings.md was deleted. Rolling back.")
+        rollback()
+        sys.exit(1)
     after_hash = hash_file(LEARNINGS_FILE)
     if before_hash and before_hash != after_hash:
         # allow change, but verify it's append-only
-        before = LEARNINGS_FILE.read_text(errors="ignore")
         after = LEARNINGS_FILE.read_text(errors="ignore")
-        if not after.startswith(before):
+        if not after.startswith(before_text):
             print("❌ learnings.md was modified non-append-only. Rolling back.")
             rollback()
             sys.exit(1)
@@ -63,8 +69,13 @@ def validate_append_only(before_hash):
 # ---------------- Codex + tests ---------------- #
 
 def run_codex(prompt):
+    if sys.platform.startswith("win"):
+        cmd = ["cmd.exe", "/c"] + CODEX_COMMAND
+    else:
+        cmd = CODEX_COMMAND
     proc = subprocess.Popen(
-        CODEX_COMMAND,
+        cmd,
+        cwd=ROOT,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -77,7 +88,7 @@ def run_codex(prompt):
     return out
 
 def run_tests():
-    return subprocess.run(TEST_COMMAND).returncode == 0
+    return subprocess.run(TEST_COMMAND, cwd=ROOT).returncode == 0
 
 # ---------------- Ralph logic ---------------- #
 
@@ -107,26 +118,34 @@ Rules:
 {learnings}
 """
 
-def run_story(story):
+def run_story(story, prd_hash):
     print(f"\n🚀 {story['id']} — {story['title']}")
 
     for attempt in range(1, MAX_ITERATIONS + 1):
         print(f"🔁 Attempt {attempt}/{MAX_ITERATIONS}")
 
-        learnings_before = hash_file(LEARNINGS_FILE)
-        learnings_text = LEARNINGS_FILE.read_text() if LEARNINGS_FILE.exists() else ""
+        learnings_before_hash = hash_file(LEARNINGS_FILE)
+        learnings_before_exists = LEARNINGS_FILE.exists()
+        learnings_text = LEARNINGS_FILE.read_text(errors="ignore") if learnings_before_exists else ""
 
         output = run_codex(build_prompt(story, learnings_text))
 
-        validate_append_only(learnings_before)
+        validate_append_only(learnings_before_hash, learnings_text, learnings_before_exists)
 
-        if "DONE" not in output:
+        done = any(line.strip() == "DONE" for line in output.splitlines())
+        if not done:
             rollback()
             continue
 
         if run_tests():
-            commit_story(story)
-            return True
+            if hash_file(PRD_FILE) != prd_hash:
+                print("❌ prd.json was modified. Rolling back.")
+                rollback()
+                sys.exit(1)
+            if commit_story(story):
+                return True
+            rollback()
+            return False
 
         rollback()
 
@@ -138,12 +157,13 @@ def main():
     ensure_clean_repo()
 
     prd = json.loads(PRD_FILE.read_text())
+    prd_hash = hash_file(PRD_FILE)
     checkout_branch(prd["branchName"])
 
     stories = sorted(prd["userStories"], key=lambda s: s["priority"])
 
     for story in stories:
-        success = run_story(story)
+        success = run_story(story, prd_hash)
         if not success:
             print("🛑 Halting Ralph — story failed.")
             break
