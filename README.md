@@ -120,3 +120,14 @@ Example:
   ]
 }
 ```
+
+## Windows setup (Codex trust required)
+
+On **Windows**, Codex may run in **read-only mode by default** until the working directory is explicitly trusted.
+
+Before running `ralph.py` for the first time, do this **once per repository**:
+
+```powershell
+cd path\to\your\repo
+codex --yolo
+```
