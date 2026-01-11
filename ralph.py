@@ -12,7 +12,7 @@ LEARNINGS_FILE = ROOT / "learnings.md"
 MAX_ITERATIONS = 5
 
 CODEX_COMMAND = ["codex.cmd", "exec"]  # adjust if needed
-TEST_COMMAND = [sys.executable, "-m", "pytest"]
+TEST_COMMAND = [sys.executable, "verify.py"]
 MISSING = object()
 
 # ---------------- Git helpers ---------------- #

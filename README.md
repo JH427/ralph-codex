@@ -75,6 +75,8 @@ This allows knowledge to accumulate **without corrupting context**.
 The agent does not decide whether it succeeded.
 The test suite does.
 
+All acceptance criteria are validated by running the VERIFY command (`python verify.py`).
+
 ---
 
 ## Repository structure
