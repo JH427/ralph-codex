@@ -35,8 +35,11 @@ They are bad at:
 
 ### 1. Immutable spec (PRD is law)
 The PRD defines truth.
-It is **never modified by the agent**.
+It is **read-only** to the agent except for limited execution metadata:
+- the selected story's `passes` may move from `false` to `true`
+- the selected story's `notes` may be updated
 
+All other PRD fields are immutable and controller-enforced.
 If the spec is wrong, a human fixes it.
 
 ---
@@ -86,6 +89,7 @@ repo/
 ├── prd.json # Immutable product spec & user stories
 ├── learnings.md # Append-only execution learnings
 ├── ralph.py # Execution controller
+verify.py # Canonical verification command
 ├── src/ # Your application code
 ├── tests/ # Your test suite
 └── .git/ # Ground truth
@@ -101,6 +105,7 @@ repo/
 - execution branch name
 - ordered atomic user stories
 - acceptance criteria
+- optional execution metadata: `passes` and `notes`
 
 Example:
 
@@ -122,6 +127,19 @@ Example:
   ]
 }
 ```
+
+Only one story may be updated per iteration, and only its `passes` and `notes`.
+
+---
+
+## Verification
+
+Run `python verify.py` to validate all acceptance criteria.
+
+Layers (fixed order):
+1. Build/compile: Python syntax check via `python -m py_compile ralph.py`
+2. Unit/integration tests: `python -m pytest`
+3. Minimal E2E: not applicable for this controller-only repo
 
 ## Windows setup (Codex trust required)
 
